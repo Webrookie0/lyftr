@@ -4,12 +4,12 @@ A chat application with ordered API-key failover, LiteLLM response caching, and 
 
 ## Live URLs
 
-The EC2 backend is deployed with HTTPS. Public frontend, repository, and demo video are still pending.
+The frontend is deployed on Vercel and the backend runs on EC2 with HTTPS. The public frontend is working, and stored history survived backend recreation. The narrated demo is pending.
 
-- Frontend: pending Vercel deployment.
+- Frontend: https://lyftr-zeta.vercel.app
 - Backend: https://lyftr.3.25.69.252.sslip.io — verified from a public client for HTTPS health, real inference, cache, failover, memory, and failed-turn integrity.
-- Public repository: https://github.com/Webrookie0/lyftr — source publication in progress.
-- Narrated demo: pending real-provider and deployment verification.
+- Public repository: https://github.com/Webrookie0/lyftr — full source published; GitHub Actions passed.
+- Narrated demo: pending recording and public sharing.
 
 Local frontend: `http://localhost:3000`. Local backend: `http://localhost:8000`.
 
@@ -60,11 +60,11 @@ make verify
 
 `make test` requires LiteLLM and runs the complete backend suite. Individual API/storage tests can also run with `cd backend && python -m unittest discover -s tests -v`; the native integration class explicitly skips if LiteLLM is missing. These tests use controlled inference or mock provider HTTP transport. `make test-frontend` runs six real Markdown/code-block rendering checks for highlighting, language labels, inline-code behavior, unsupported-language fallback, and HTML escaping. `make verify` calls the actual running backend and real providers, consuming their quota.
 
-Verification on 21 November 2026: all 33 backend tests passed, including native LiteLLM cache and provider HTTP transport checks. Ruff lint and formatting passed. TypeScript and the Vite production build passed. Local and Oracle Compose configurations validated. Python dependencies are recorded in `backend/uv.lock`; frontend dependencies are recorded in `frontend/package-lock.json`. Both Dockerfiles use these lockfiles. The user built both Docker images and confirmed the backend healthy and frontend started. The real-provider verification script passed against the running Docker backend: Gemini replies, immediate cache hits with identical usage and lower server latency, real answers through key_2 after simulated 429/500, warmed-cache wildcard 503 with unchanged history, and multi-turn memory. The user confirmed browser chat and all visible reply metadata work, and retrieved the stored user/assistant pair after a backend container restart. The refreshed matte-black theme was also confirmed by the user after rebuilding/reloading the frontend. Mobile visual QA and public deployment remain pending.
+Verification on 21 November 2026: all 33 backend tests and six frontend rendering tests passed. Ruff lint/formatting, TypeScript compilation, and the Vite production build passed. GitHub Actions passed for the published source. Local, Oracle, and VM Compose configurations validated. Dependencies are locked in `backend/uv.lock` and `frontend/package-lock.json`; both Dockerfiles use the lockfiles. Real-provider checks passed against both the local Docker backend and the public EC2 HTTPS API: Gemini inference, immediate native cache hits with identical usage and lower latency, real key_2 answers after simulated 429/500, warmed-cache wildcard 503 with unchanged history, and multi-turn memory. Local browser chat, reply metadata, the black theme, anchored composer, and syntax highlighting were confirmed, as was local history persistence after a backend restart. The deployed frontend was confirmed working after the production API URL was configured. Public HTTPS health returned HTTP 200 with the exact Vercel allow-origin header, two configured keys, and caching enabled. Saved user/assistant messages and their metadata were retrieved through the public API after the EC2 backend container was recreated. Mobile visual QA remains pending.
 
 ### AWS EC2 backend and Vercel frontend
 
-Oracle VM capacity is currently unavailable to the user. AWS EC2 is a compatible alternative, subject to verified ₹0 account eligibility. The user has not created an AWS account yet. See [the EC2 deployment guide](deploy/AWS.md) for current Free-plan terms, instance/network settings, Docker setup, HTTPS, and verification. No AWS resources have been launched.
+The backend currently runs on an Ubuntu 24.04 `t3.small` instance in AWS `ap-southeast-2`, with Docker Compose, Caddy HTTPS, and persistent SQLite storage. The frontend is deployed separately on Vercel. See [the EC2 deployment guide](deploy/AWS.md) for account eligibility, instance/network settings, Docker setup, HTTPS, and verification.
 
 The host-independent deployment command is:
 
@@ -155,7 +155,7 @@ For the narrated 2–3 minute demo: show the public app and `/health`; send a me
 
 ## Setup Used: your editor and AI tools
 
-Implementation continued in the Codex workspace on macOS using the Codex coding agent, terminal tools, Python, uv, Node, npm, and Docker Compose. AI-assisted implementation was checked with 33 API/storage and native LiteLLM integration tests, Ruff, TypeScript compilation, a production bundle, and Compose configuration validation. Real Gemini, local Docker, browser chat/metadata, and container-restart persistence were subsequently verified with user-shared output. Public deployment and deployed browser checks remain pending.
+Implementation continued in the Codex workspace on macOS using the Codex coding agent, terminal tools, Python, uv, Node, npm, and Docker Compose. AI-assisted implementation was checked with 33 API/storage and native LiteLLM integration tests, six frontend rendering tests, Ruff, TypeScript compilation, a production bundle, and Compose configuration validation. Real Gemini, local Docker, browser chat/metadata, local container-restart persistence, and the public EC2 API were verified with terminal output and browser feedback. GitHub Actions passed, the deployed frontend was confirmed working, and public session history survived EC2 backend recreation.
 
 ## Bonus features (if any): what you added beyond the requirements and why
 
