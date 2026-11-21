@@ -72,6 +72,7 @@ class Gateway:
         self.keys = settings.keys
         if len(self.keys) < 2 or len(set(self.keys)) != len(self.keys):
             raise ValueError("LLM_API_KEYS must contain at least two distinct API keys")
+        settings.models  # Validate any per-key model configuration before startup.
         # The Cache instance belongs to this application, not a global callback pool.
         self.cache = Cache(type="local", ttl=settings.cache_ttl_seconds)
         litellm.telemetry = False
@@ -79,31 +80,35 @@ class Gateway:
 
     def cache_arguments(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         identity = json.dumps(
-            {"model": self.settings.llm_model, "messages": messages},
+            {"models": list(dict.fromkeys(self.settings.models)), "messages": messages},
             sort_keys=True,
             ensure_ascii=False,
             separators=(",", ":"),
         )
         return {
             "cache_key": hashlib.sha256(identity.encode()).hexdigest(),
-            "model": self.settings.llm_model,
+            "model": self.settings.models[0],
             "messages": messages,
             "cache": {"ttl": self.settings.cache_ttl_seconds},
         }
 
     async def resolve(self, messages: list[dict[str, str]], failures: dict[str, int]) -> Resolution:
+        models = self.settings.models
         cache_args = self.cache_arguments(messages)
         if not failures:
             cached = await self.cache.async_get_cache(**cache_args)
             if cached is not None:
                 try:
                     reply, input_tokens, output_tokens = response_values(cached)
+                    cached_model = cached.get("lyftr_model", models[0])
+                    if cached_model not in models:
+                        raise ValueError("cached model is not in the configured route")
                 except ValueError:
                     pass  # An unusable cache entry cannot masquerade as an answer.
                 else:
                     return Resolution(
                         reply,
-                        self.settings.llm_model,
+                        cached_model,
                         input_tokens,
                         output_tokens,
                         "LLM_CACHE",
@@ -113,6 +118,7 @@ class Gateway:
 
         for index, key in enumerate(self.keys):
             key_id = f"key_{index + 1}"
+            model = models[index]
             simulated_status = failures.get(key_id, failures.get("*"))
             try:
                 if simulated_status:
@@ -120,17 +126,17 @@ class Gateway:
                     if simulated_status == 429:
                         raise self.litellm.RateLimitError(
                             message="simulated rate limit",
-                            model=self.settings.llm_model,
+                            model=model,
                             llm_provider="simulation",
                         )
                     raise self.litellm.APIError(
                         status_code=simulated_status,
                         message="simulated provider failure",
-                        model=self.settings.llm_model,
+                        model=model,
                         llm_provider="simulation",
                     )
                 kwargs = {
-                    "model": self.settings.llm_model,
+                    "model": model,
                     "messages": messages,
                     "api_key": key,
                     "timeout": self.settings.llm_timeout_seconds,
@@ -139,8 +145,19 @@ class Gateway:
                     "caching": False,
                     "cache": {"no-cache": True, "no-store": True},
                 }
-                if self.settings.llm_api_base:
+                if self.settings.llm_api_base and model == models[0]:
                     kwargs["api_base"] = self.settings.llm_api_base
+                if model.startswith("deepseek/"):
+                    # Regular chat avoids DeepSeek's default thinking-mode latency.
+                    kwargs.setdefault("api_base", "https://api.deepseek.com")
+                    kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+                if model.startswith("groq/"):
+                    # Groq's OpenAI-compatible API avoids a missing-service_tier
+                    # response bug in this pinned LiteLLM Groq adapter.
+                    kwargs["model"] = "openai/" + model.removeprefix("groq/")
+                    kwargs.setdefault("api_base", "https://api.groq.com/openai/v1")
+                    if model == "groq/openai/gpt-oss-20b":
+                        kwargs["extra_body"] = {"reasoning_effort": "low"}
                 # Bound the entire SDK attempt, including any provider-client work.
                 async with asyncio.timeout(self.settings.llm_timeout_seconds):
                     response = await self.litellm.acompletion(**kwargs)
@@ -158,10 +175,11 @@ class Gateway:
                 continue
             if not failures:
                 # Await native insertion so an immediately repeated request can hit.
-                await self.cache.async_add_cache(response, **cache_args)
+                data = response.model_dump() if hasattr(response, "model_dump") else response
+                await self.cache.async_add_cache({**data, "lyftr_model": model}, **cache_args)
             return Resolution(
                 reply,
-                self.settings.llm_model,
+                model,
                 input_tokens,
                 output_tokens,
                 "LIVE_INFERENCE",

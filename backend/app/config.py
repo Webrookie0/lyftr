@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     )
 
     llm_api_keys: str = ""
-    llm_model: str = "gemini/gemini-2.5-flash-lite"
+    llm_model: str = "deepseek/deepseek-flash"
+    llm_models: str = ""
     llm_api_base: str | None = None
     database_url: str = "sqlite:///./data/app.db"
     allowed_origins: str = "http://localhost:3000"
@@ -28,6 +29,15 @@ class Settings(BaseSettings):
     @property
     def keys(self) -> list[str]:
         return [key.strip() for key in self.llm_api_keys.split(",") if key.strip()]
+
+    @property
+    def models(self) -> list[str]:
+        if not self.llm_models.strip():
+            return [self.llm_model] * len(self.keys)
+        models = [model.strip() for model in self.llm_models.split(",")]
+        if len(models) != len(self.keys) or not all(models):
+            raise ValueError("LLM_MODELS must contain one nonempty model per API key")
+        return models
 
     @property
     def origins(self) -> list[str]:

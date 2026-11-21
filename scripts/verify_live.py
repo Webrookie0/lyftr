@@ -36,9 +36,11 @@ def main():
     status, first = chat(session, prompt)
     assert status == 200, first
     assert first["reply"].strip() and first["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+    print(f"Live model: {first['metadata']['model']} via {first['metadata']['key_id']}")
     status, cached = chat(f"cache-{run}", prompt)
     assert status == 200 and cached["metadata"]["resolution_source"] == "LLM_CACHE", cached
     assert cached["reply"] == first["reply"]
+    assert cached["metadata"]["model"] == first["metadata"]["model"]
     for field in ("input_tokens", "output_tokens"):
         assert cached["metadata"][field] == first["metadata"][field]
     assert cached["metadata"]["key_id"] is None and cached["metadata"]["fallback_attempts"] == 0
@@ -49,7 +51,7 @@ def main():
         assert status == 200, result
         assert result["metadata"]["key_id"] == "key_2"
         assert result["metadata"]["fallback_attempts"] == 1
-    print("PASS real answer through key_2 after simulated 429 and 500")
+    print(f"PASS real answer through key_2 after simulated 429 and 500 ({result['metadata']['model']})")
     _, before = request(f"/sessions/{session}/messages")
     status, result = chat(session, prompt, "*=429")
     assert status == 503 and result == {"detail": "all providers unavailable"}

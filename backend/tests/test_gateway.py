@@ -40,6 +40,8 @@ class NativeGatewayTests(unittest.IsolatedAsyncioTestCase):
             _env_file=None,
             llm_api_keys="test-key-one,test-key-two",
             llm_model="openai/gpt-4o-mini",
+            llm_models="",
+            llm_api_base=None,
             llm_timeout_seconds=2,
         )
         self.gateway = Gateway(self.settings)
@@ -210,6 +212,99 @@ class NativeGatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first.key_id, "key_2")
         self.assertEqual(second.source, "LLM_CACHE")
         self.assertEqual(len(self.requests), 2)
+
+    async def test_deepseek_native_request_failover_and_cache(self):
+        from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
+
+        self.patcher.stop()
+        native_completion = self.gateway.litellm.acompletion
+        handler = AsyncHTTPHandler()
+        await handler.client.aclose()
+        handler.client = self.http
+        settings = self.settings.model_copy(update={"llm_model": "deepseek/deepseek-flash"})
+        gateway = Gateway(settings)
+        self.statuses["test-key-one"] = 429
+
+        async def complete(**kwargs):
+            return await native_completion(**kwargs, client=handler)
+
+        with patch.object(gateway.litellm, "acompletion", side_effect=complete):
+            first = await gateway.resolve(self.messages, {})
+            cached = await gateway.resolve(self.messages, {})
+
+        self.assertEqual((first.key_id, first.fallback_attempts), ("key_2", 1))
+        self.assertEqual(cached.source, "LLM_CACHE")
+        self.assertEqual(
+            (cached.input_tokens, cached.output_tokens), (first.input_tokens, first.output_tokens)
+        )
+        self.assertIsNone(cached.key_id)
+        self.assertEqual(len(self.requests), 2)
+        for request in self.requests:
+            self.assertEqual(str(request.url), "https://api.deepseek.com/chat/completions")
+            body = json.loads(request.content)
+            self.assertEqual(body["model"], "deepseek-flash")
+            self.assertEqual(body["thinking"], {"type": "disabled"})
+
+    async def test_mixed_providers_keep_fallback_model_in_cache(self):
+        from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
+        from openai import AsyncOpenAI
+
+        self.patcher.stop()
+        native_completion = self.gateway.litellm.acompletion
+        handler = AsyncHTTPHandler()
+        await handler.client.aclose()
+        handler.client = self.http
+        settings = self.settings.model_copy(
+            update={
+                "llm_models": "deepseek/deepseek-flash,groq/openai/gpt-oss-20b",
+                "llm_api_base": "https://api.deepseek.com",
+            }
+        )
+        gateway = Gateway(settings)
+        self.statuses["test-key-one"] = 429
+        groq_client = AsyncOpenAI(
+            api_key="test-key-two",
+            base_url="https://api.groq.com/openai/v1",
+            http_client=self.http,
+            max_retries=0,
+        )
+
+        async def complete(**kwargs):
+            client = groq_client if kwargs["model"].startswith("openai/") else handler
+            return await native_completion(**kwargs, client=client)
+
+        with patch.object(gateway.litellm, "acompletion", side_effect=complete):
+            first = await gateway.resolve(self.messages, {})
+            cached = await gateway.resolve(self.messages, {})
+
+        self.assertEqual((first.key_id, first.fallback_attempts), ("key_2", 1))
+        self.assertEqual(first.model, "groq/openai/gpt-oss-20b")
+        self.assertEqual(cached.model, first.model)
+        self.assertEqual(cached.source, "LLM_CACHE")
+        self.assertEqual(
+            (cached.input_tokens, cached.output_tokens), (first.input_tokens, first.output_tokens)
+        )
+        self.assertEqual(len(self.requests), 2)
+        self.assertEqual(str(self.requests[0].url), "https://api.deepseek.com/chat/completions")
+        self.assertEqual(
+            str(self.requests[1].url), "https://api.groq.com/openai/v1/chat/completions"
+        )
+        body = json.loads(self.requests[1].content)
+        self.assertEqual(body["model"], "openai/gpt-oss-20b")
+        self.assertEqual(body["reasoning_effort"], "low")
+        self.assertNotIn("thinking", body)
+        old_identity = gateway.cache_arguments(self.messages)["cache_key"]
+        gateway.settings = settings.model_copy(
+            update={
+                "llm_models": "deepseek/deepseek-flash,groq/other-model",
+            }
+        )
+        self.assertNotEqual(old_identity, gateway.cache_arguments(self.messages)["cache_key"])
+
+    async def test_per_key_models_require_complete_configuration(self):
+        for models in ("deepseek/deepseek-flash", "deepseek/deepseek-flash,"):
+            with self.assertRaises(ValueError):
+                Gateway(self.settings.model_copy(update={"llm_models": models}))
 
     async def test_simulation_bypasses_warm_cache_and_does_not_poison_it(self):
         await self.gateway.resolve(self.messages, {})

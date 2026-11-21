@@ -18,7 +18,7 @@ Official references:
 
 ## Instance configuration
 
-In the EC2 console, verify that the instance and image are eligible under the active Free account plan. A `t3.small` with 2 GiB RAM is a comfortable starting size for LiteLLM, FastAPI, Docker, and Caddy if offered by the account. AWS currently lists it among the new-account eligible types. A 1 GiB `t3.micro` uses fewer resources but has less memory headroom during builds. No GPU is required because inference runs through Gemini's API.
+In the EC2 console, verify that the instance and image are eligible under the active Free account plan. A `t3.small` with 2 GiB RAM is a comfortable starting size for LiteLLM, FastAPI, Docker, and Caddy if offered by the account. AWS currently lists it among the new-account eligible types. A 1 GiB `t3.micro` uses fewer resources but has less memory headroom during builds. No GPU is required because inference runs through the configured providers' APIs.
 
 Use a free-tier-eligible Ubuntu 24.04 LTS image and a modest gp3 root disk, for example 12 GiB, with usage covered by the verified credit balance. Compute, EBS storage, public IPv4, and network use can all consume credits. Run the backend and Caddy on this VM; deploy the static frontend on Vercel.
 
@@ -41,7 +41,7 @@ ssh -i /path/to/lyftr.pem ubuntu@YOUR_EC2_PUBLIC_IP
 
 Install Docker Engine and the Docker Compose plugin using [Docker's official Ubuntu installation guide](https://docs.docker.com/engine/install/ubuntu/). Compose v2.24.4+ is required for the `!reset` override.
 
-Copy the repository to the VM. Copy its private `.env` separately; it contains the Gemini keys. Keep `.env` out of the public repository and set its permissions to 600. On the VM, set:
+Copy the repository to the VM. Copy its private `.env` separately; it contains the provider keys. Keep `.env` out of the public repository and set its permissions to 600. On the VM, set:
 
 ```dotenv
 DATABASE_URL=sqlite:////data/app.db
