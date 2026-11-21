@@ -1,0 +1,27 @@
+services:
+  backend:
+    ports: !reset []
+  frontend:
+    profiles: [local-ui]
+  caddy:
+    image: caddy:2.10-alpine
+    environment:
+      BACKEND_HOST: ${BACKEND_HOST:?Set BACKEND_HOST in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env}
+      PORT: ${PORT:-8000}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

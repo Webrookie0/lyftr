@@ -1,0 +1,33 @@
+[project]
+name = "lyftr-backend"
+version = "0.1.0"
+description = "Resilient chat with LiteLLM and SQLite"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "aiosqlite>=0.21,<1",
+  "fastapi>=0.115,<1",
+  "litellm==1.80.5",
+  "pydantic-settings>=2.7,<3",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "httpx>=0.28,<1", "ruff>=0.11,<1"]
+
+[build-system]
+requires = ["setuptools>=75,<82"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

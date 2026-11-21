@@ -1,0 +1,7 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$BACKEND_HOST} {
+    reverse_proxy backend:{$PORT:8000}
+}
